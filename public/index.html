@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frontier: Napoleonic Conquest — 3D Multiplayer Land &amp; Naval Warfare</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- CONNECTION / LOADING SCREEN -->
+  <div id="connectionOverlay" class="modal-overlay">
+    <div class="loading-card">
+      <h1>FRONTIER</h1>
+      <p class="subtitle">NAPOLEONIC CONQUEST</p>
+      <div class="spinner"></div>
+      <p id="connectionStatusText">Connecting to Imperial Command Server...</p>
+      <button id="retryConnectBtn" class="secondary-btn hidden">Retry Connection</button>
+    </div>
+  </div>
+
+  <!-- TOP CONQUEST HUD -->
+  <div id="topHud" class="hidden">
+    <div class="conquest-bar-wrapper">
+      <div class="team-badge red-badge">
+        <span class="team-title">REDCOATS</span>
+        <span id="redFortCount">6 Forts</span>
+      </div>
+      <div class="progress-track">
+        <div id="redProgressBar" class="progress-fill red-fill" style="width: 0%"></div>
+        <div class="round-center-badge">
+          <span id="roundLabel">WAR #1</span>
+          <span id="pointsSummary">0 — 0</span>
+        </div>
+        <div id="blueProgressBar" class="progress-fill blue-fill" style="width: 0%"></div>
+      </div>
+      <div class="team-badge blue-badge">
+        <span class="team-title">BLUECOATS</span>
+        <span id="blueFortCount">6 Forts</span>
+      </div>
+    </div>
+    <div class="hud-subrow">
+      <span id="majorityHint" class="majority-hint">Hold 7+ Forts (&gt;50%) to earn Fort Points</span>
+      <span id="roomCodeBadge" class="majority-hint hidden"></span>
+    </div>
+  </div>
+
+  <!-- KILL FEED & CAPTURE ALERTS -->
+  <div id="killFeed" class="kill-feed"></div>
+  <div id="bannerAlert" class="banner-alert hidden"></div>
+
+  <!-- INTERACTION PROMPT -->
+  <div id="interactPrompt" class="interact-prompt hidden">Press [F] to Interact</div>
+
+  <!-- CROSSHAIR & RELOAD BAR -->
+  <div id="crosshair" class="crosshair hidden">
+    <div class="ch-dot"></div>
+    <div id="reloadBarWrap" class="reload-bar-wrap hidden">
+      <div id="reloadBarFill" class="reload-bar-fill"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM HUD -->
+  <div id="bottomHud" class="hidden">
+    <div class="status-panel">
+      <div class="hp-row">
+        <span id="classBadge" class="class-tag">MUSKETEER</span>
+        <span id="kdaBadge" class="kda-tag">0 K / 0 D / 0 Cap</span>
+        <span id="hpText">100 / 100 HP</span>
+      </div>
+      <div class="hp-track">
+        <div id="hpFill" class="hp-fill" style="width: 100%"></div>
+      </div>
+      <div id="weaponSlots" class="weapon-slots">
+        <div class="w-slot active" data-idx="0">[1] Musket</div>
+        <div class="w-slot" data-idx="1">[2] Pistol</div>
+        <div class="w-slot" data-idx="2">[3] Bayonet</div>
+      </div>
+      <div class="controls-mini">
+        [WASD] Move | [Shift/RMB] Aim | [C] Crouch | [V] 1st/3rd | [F] Mount/Cannon/Ship | [M] Map | [Esc] Menu
+      </div>
+    </div>
+
+    <div class="minimap-box">
+      <canvas id="minimapCanvas" width="165" height="165"></canvas>
+      <div class="minimap-label">[M] Tactical Map</div>
+    </div>
+  </div>
+
+  <!-- CHAT BOX -->
+  <div id="chatBox" class="chat-box hidden">
+    <div id="chatMessages" class="chat-messages"></div>
+    <input id="chatInput" type="text" maxlength="140" placeholder="Enter for All Chat, T for Team Chat..." class="hidden" />
+  </div>
+
+  <!-- DEATH / RESPAWN OVERLAY -->
+  <div id="deathOverlay" class="modal-overlay hidden">
+    <div class="death-card">
+      <h2>YOU HAVE FALLEN IN BATTLE</h2>
+      <p id="deathReasonText">Struck down by enemy fire</p>
+      <div class="respawn-counter">Reinforcements arriving in <span id="respawnCountdown">4.5</span>s...</div>
+      <button id="openLoadoutFromDeathBtn" class="secondary-btn">Change Class / Regiment</button>
+    </div>
+  </div>
+
+  <!-- FULL TACTICAL MAP OVERLAY (M KEY) -->
+  <div id="fullMapOverlay" class="modal-overlay hidden">
+    <div class="map-modal">
+      <h2>TACTICAL WAR ROOM MAP (Press [M] to Close)</h2>
+      <canvas id="fullMapCanvas" width="520" height="520"></canvas>
+      <div class="map-legend">
+        <span><i class="dot red"></i> Red Fort</span>
+        <span><i class="dot blue"></i> Blue Fort</span>
+        <span><i class="dot gold"></i> Warship</span>
+        <span><i class="dot white"></i> Your Soldier</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- VICTORY / ROUND END SCOREBOARD -->
+  <div id="roundOverOverlay" class="modal-overlay hidden">
+    <div class="victory-modal">
+      <h1 id="victoryTitle">REDCOATS VICTORY!</h1>
+      <p id="victorySubtitle">Next campaign begins in 10 seconds with reshuffled forts...</p>
+      <table class="scoreboard-table">
+        <thead>
+          <tr>
+            <th>Soldier</th>
+            <th>Army</th>
+            <th>Class</th>
+            <th>Kills</th>
+            <th>Deaths</th>
+            <th>Forts</th>
+          </tr>
+        </thead>
+        <tbody id="scoreboardBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- MAIN MENU / SERVER BROWSER / CUSTOMISATION / SETTINGS -->
+  <div id="deployOverlay" class="modal-overlay hidden">
+    <div class="deploy-card">
+      <div class="logo-header">
+        <h1>FRONTIER: NAPOLEONIC CONQUEST</h1>
+        <p>3D Multiplayer Age of Musket &amp; Sail Warfare</p>
+      </div>
+
+      <!-- NAVIGATION TABS -->
+      <div class="menu-tabs">
+        <button type="button" class="tab-btn active" data-tab="tabDeploy">Battlefield</button>
+        <button type="button" class="tab-btn" data-tab="tabServers">Servers &amp; Private</button>
+        <button type="button" class="tab-btn" data-tab="tabCustomize">Uniform &amp; Stats</button>
+        <button type="button" class="tab-btn" data-tab="tabSettings">Settings</button>
+      </div>
+
+      <div id="menuErrorBanner" class="error-banner hidden"></div>
+
+      <!-- TAB 1: DEPLOYMENT (NAME, TEAM, CLASS) -->
+      <div id="tabDeploy" class="tab-pane active">
+        <div class="form-group">
+          <label for="playerNameInput">Soldier Name</label>
+          <input id="playerNameInput" type="text" maxlength="18" placeholder="Enter your rank &amp; name..." />
+        </div>
+
+        <div class="form-group">
+          <label>Select Army</label>
+          <div class="team-selector">
+            <button type="button" class="team-btn red selected" data-team="red">
+              <strong>REDCOATS</strong>
+              <span>Royal Expeditionary Force</span>
+            </button>
+            <button type="button" class="team-btn blue" data-team="blue">
+              <strong>BLUECOATS</strong>
+              <span>Imperial Guard</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Select Combat Class</label>
+          <div class="class-grid">
+            <button type="button" class="class-btn selected" data-class="musketeer">
+              <strong>Musketeer</strong>
+              <span>Flintlock Musket, Pistol, Bayonet</span>
+            </button>
+            <button type="button" class="class-btn" data-class="cavalry">
+              <strong>Cavalryman</strong>
+              <span>Dragoon Saber, Pistol, Fast Rider</span>
+            </button>
+            <button type="button" class="class-btn" data-class="cannoneer">
+              <strong>Cannoneer</strong>
+              <span>Fast Cannon Reload, Pistol, Hammer</span>
+            </button>
+            <button type="button" class="class-btn" data-class="sailor">
+              <strong>Sailor</strong>
+              <span>Blunderbuss, Cutlass, Ship Captain</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: PUBLIC SERVER BROWSER & PRIVATE MATCH -->
+      <div id="tabServers" class="tab-pane hidden">
+        <div class="form-group">
+          <div class="row-between">
+            <label>Public Conquest Servers</label>
+            <button type="button" id="refreshServersBtn" class="mini-btn">Refresh</button>
+          </div>
+          <div id="serverListContainer" class="server-list">
+            <div class="server-item selected" data-room="eu-waterloo">Waterloo Campaign [Public #1]</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="form-group">
+          <label>Join Private Match via Invite Code</label>
+          <div class="inline-input-row">
+            <input id="privateCodeInput" type="text" maxlength="6" placeholder="e.g. A7K9P2" />
+            <button type="button" id="joinPrivateBtn" class="secondary-btn">Join Code</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Host New Private Match</label>
+          <div class="inline-input-row">
+            <input id="privateRoomNameInput" type="text" maxlength="24" placeholder="Regiment Skirmish" />
+            <label class="checkbox-inline"><input type="checkbox" id="privateBotsCheck" checked /> AI Bots</label>
+            <button type="button" id="createPrivateBtn" class="secondary-btn">Create Room</button>
+          </div>
+          <p id="createdCodeDisplay" class="code-display hidden"></p>
+        </div>
+      </div>
+
+      <!-- TAB 3: UNIFORM CUSTOMISATION & CAREER STATS -->
+      <div id="tabCustomize" class="tab-pane hidden">
+        <div class="form-group">
+          <label>Regimental Headgear</label>
+          <div class="option-pills" id="hatSelector">
+            <button type="button" class="pill-btn selected" data-hat="shako">Infantry Shako</button>
+            <button type="button" class="pill-btn" data-hat="bicorne">Officer Bicorne</button>
+            <button type="button" class="pill-btn" data-hat="bearskin">Grenadier Bearskin</button>
+            <button type="button" class="pill-btn" data-hat="tricorne">Naval Tricorne</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Uniform Epaulette Trim</label>
+          <div class="option-pills" id="trimSelector">
+            <button type="button" class="pill-btn selected" data-trim="gold">Imperial Gold</button>
+            <button type="button" class="pill-btn" data-trim="white">Regimental White</button>
+            <button type="button" class="pill-btn" data-trim="silver">Dragoon Silver</button>
+            <button type="button" class="pill-btn" data-trim="crimson">Guard Crimson</button>
+          </div>
+        </div>
+
+        <div class="career-stats-box">
+          <h3>Persistent Service Record</h3>
+          <div class="stats-grid">
+            <div><strong id="statCareerKills">0</strong><span>Career Kills</span></div>
+            <div><strong id="statCareerDeaths">0</strong><span>Deaths</span></div>
+            <div><strong id="statCareerCaptures">0</strong><span>Forts Captured</span></div>
+            <div><strong id="statCareerWins">0</strong><span>Wars Won</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: AUDIO & GRAPHICS SETTINGS -->
+      <div id="tabSettings" class="tab-pane hidden">
+        <div class="form-group">
+          <label for="masterVolSlider">Master Audio Volume: <span id="masterVolVal">70%</span></label>
+          <input id="masterVolSlider" type="range" min="0" max="100" value="70" />
+        </div>
+        <div class="form-group">
+          <label for="sfxVolSlider">Weapons &amp; Cannon SFX: <span id="sfxVolVal">80%</span></label>
+          <input id="sfxVolSlider" type="range" min="0" max="100" value="80" />
+        </div>
+        <div class="form-group">
+          <label for="mouseSensSlider">Mouse Aim Sensitivity: <span id="mouseSensVal">1.0x</span></label>
+          <input id="mouseSensSlider" type="range" min="30" max="220" value="100" />
+        </div>
+        <div class="form-group">
+          <label for="gfxQualitySelect">Graphics Quality</label>
+          <select id="gfxQualitySelect">
+            <option value="high">High (Dynamic Shadows + Full Resolution)</option>
+            <option value="medium" selected>Medium (Balanced Performance)</option>
+            <option value="low">Low (Fast Frame Rate / No Shadows)</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="deployBtn" class="deploy-btn">MARCH TO BATTLE</button>
+    </div>
+  </div>
+
+  <script src="/js/game.js"></script>
+</body>
+</html>
